@@ -14,7 +14,7 @@ with st.sidebar:
     st.write('1. Conte suas afinidades.\n2. Explore a recomendação.\n3. Confira as regras e os próximos passos.')
     st.info('Orientação exploratória: a pontuação representa regras compatíveis, não probabilidade de sucesso nem diagnóstico vocacional.')
     st.caption('Leucimar Tiago da Silva Carvalho | UNIPAC Barbacena')
-    if st.button('Reiniciar entrevista'):
+    if st.button('Reiniciar entrevista', key='reiniciar'):
         for key in list(st.session_state):
             del st.session_state[key]
         st.rerun()
@@ -51,7 +51,7 @@ respostas = dict(matematica=matematica, ferramenta=ferramenta, objetivo=objetivo
 completas = all(v is not None for v in respostas.values())
 st.progress(sum(v is not None for v in respostas.values()) / 5,
             text=f'{sum(v is not None for v in respostas.values())} de 5 dimensões respondidas')
-if st.button('Explorar minha trilha', type='primary', disabled=not completas):
+if st.button('Explorar minha trilha', type='primary', disabled=not completas, key='recomendar'):
     st.session_state['resultado'] = asdict(recomendar(respostas))
     st.session_state['respostas_resultado'] = respostas.copy()
 
