@@ -28,9 +28,7 @@ with st.sidebar:
         st.write(('➜ ' if i == st.session_state.passo else '• ') + nome)
     st.info('Aderência é uma nota do modelo de preferências. Não é probabilidade de sucesso nem diagnóstico vocacional.')
     st.caption('As afinidades usam 1–5. Conhecimento atual usa 0–4. A análise de lacunas visa o alvo Júnior desta base didática.')
-    if st.button('Reiniciar tudo', key='reiniciar_e2'):
-        st.session_state.clear()
-        st.rerun()
+    st.button('Reiniciar tudo', key='reiniciar_e2', on_click=st.session_state.clear)
 passo = st.session_state.passo
 st.progress(passo/3, text=f'Passo {passo+1} de 4 · {rotulos[passo]}')
 
@@ -38,7 +36,31 @@ st.progress(passo/3, text=f'Passo {passo+1} de 4 · {rotulos[passo]}')
 def avancar(n):
     st.session_state.passo = n
     st.session_state.pop('analise', None)
-    st.rerun()
+
+
+def salvar_perfil():
+    st.session_state.formulario.update(experiencia=st.session_state.experiencia, horas=st.session_state.horas)
+    avancar(1)
+
+
+def salvar_afinidades(destino):
+    f = st.session_state.formulario
+    for q, p in base['perguntas'].items():
+        if p['etapa'] == 'afinidades':
+            f['respostas'][q] = st.session_state['a_'+q]
+    for cid in base['competencias']:
+        f['conhecimentos'][cid] = st.session_state['c_'+cid]
+    avancar(destino)
+
+
+def salvar_objetivos(destino):
+    f = st.session_state.formulario
+    for q, p in base['perguntas'].items():
+        if p['etapa'] == 'objetivos':
+            f['respostas'][q] = st.session_state['o_'+q]
+    avancar(destino)
+    if destino == 3:
+        st.session_state.analise = analisar(f['respostas'], base)
 
 
 if passo == 0:
@@ -51,9 +73,7 @@ if passo == 0:
         horas = st.number_input('Horas disponíveis por semana', min_value=1, max_value=40,
                                 value=formulario['horas'], step=1, key='horas')
         st.caption('Não pedimos dados pessoais. O contexto é informativo e não altera sua pontuação.')
-        if st.form_submit_button('Próximo: afinidades', key='proximo_perfil'):
-            formulario.update(experiencia=experiencia, horas=horas)
-            avancar(1)
+        st.form_submit_button('Próximo: afinidades', key='proximo_perfil', on_click=salvar_perfil)
 elif passo == 1:
     st.subheader('2. Afinidades técnicas e conhecimento atual')
     st.write('Afinidade: 1 = muito baixa · 2 = baixa · 3 = moderada · 4 = alta · 5 = muito alta.')
@@ -75,11 +95,8 @@ elif passo == 1:
                     conhecimentos[cid] = st.selectbox(c['nome'], range(5), index=conhecimentos[cid],
                                                       format_func=lambda v: f"{v} · {base['escala_conhecimento']['rotulos'][v]}", key='c_'+cid)
         esquerda, direita = st.columns(2)
-        voltar = esquerda.form_submit_button('Voltar ao perfil', key='voltar_afinidades')
-        proximo = direita.form_submit_button('Próximo: objetivos', key='proximo_afinidades')
-        if voltar or proximo:
-            formulario.update(respostas=respostas, conhecimentos=conhecimentos)
-            avancar(0 if voltar else 2)
+        esquerda.form_submit_button('Voltar ao perfil', key='voltar_afinidades', on_click=salvar_afinidades, args=(0,))
+        direita.form_submit_button('Próximo: objetivos', key='proximo_afinidades', on_click=salvar_afinidades, args=(2,))
 elif passo == 2:
     st.subheader('3. Objetivos de carreira')
     with st.form('objetivos'):
@@ -89,15 +106,8 @@ elif passo == 2:
                 respostas[q] = st.slider(p['rotulo'], 1, 5, respostas[q], key='o_'+q)
         st.caption('1 = muito pouco · 3 = moderadamente · 5 = muito. Mais de um objetivo pode ser importante para você.')
         esquerda, direita = st.columns(2)
-        voltar = esquerda.form_submit_button('Voltar às afinidades', key='voltar_objetivos')
-        calcular = direita.form_submit_button('Calcular compatibilidade', key='calcular')
-        if voltar or calcular:
-            formulario['respostas'] = respostas
-            if voltar:
-                avancar(1)
-            st.session_state.analise = analisar(respostas, base)
-            st.session_state.passo = 3
-            st.rerun()
+        esquerda.form_submit_button('Voltar às afinidades', key='voltar_objetivos', on_click=salvar_objetivos, args=(1,))
+        direita.form_submit_button('Calcular compatibilidade', key='calcular', on_click=salvar_objetivos, args=(3,))
 else:
     analise = st.session_state.get('analise')
     if analise is None:
@@ -106,6 +116,9 @@ else:
     st.subheader('Seu Top 3 de aderência')
     for aviso in analise['avisos']:
         st.warning(aviso)
+    for empate in analise['empates']:
+        if set(empate['trilhas']) & {r['trilha'] for r in analise['top3']}:
+            st.caption(f"Empate em {empate['percentual']:.2f}%: " + ', '.join(base['trilhas'][t]['nome'] for t in empate['trilhas']))
     cols = st.columns(3)
     for col, r in zip(cols, analise['top3']):
         col.metric(r['nome'], f"{r['percentual']:.2f}%")
@@ -152,5 +165,4 @@ else:
     st.download_button('Baixar meu plano (.md)', plano_markdown(analise, plano), 'meu_plano_carreira_ti.md', 'text/markdown', key='baixar_md')
     st.download_button('Baixar análise completa (.json)', json.dumps(dict(perfil=formulario, analise=analise, plano=plano),ensure_ascii=False,indent=2),
                        'minha_analise_carreira.json','application/json',key='baixar_json')
-    if st.button('Revisar entrevista', key='revisar'):
-        avancar(0)
+    st.button('Revisar entrevista', key='revisar', on_click=avancar, args=(0,))
