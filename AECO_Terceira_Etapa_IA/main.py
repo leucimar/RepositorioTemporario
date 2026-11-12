@@ -1,7 +1,10 @@
-"""AECO - Aula 10: preparação dos dados Iris para a rede neural.
+"""AECO - Aula 10: rede neural artificial para o conjunto Iris.
 
-Etapa 2 de 3. Execute: python main.py
+Implementação do forward e backpropagation apenas com NumPy.
+Scikit-learn é usado exclusivamente para carregar e dividir o conjunto de dados.
 """
+
+import argparse
 
 import numpy as np
 from sklearn.datasets import load_iris
@@ -38,7 +41,6 @@ def preparar_dados(semente=42):
     }
 
 
-# Etapa 2: rede neural 4 -> 8 (ReLU) -> 3 (Softmax).
 def relu(z):
     return np.maximum(z, 0.0)
 
@@ -53,8 +55,14 @@ def softmax(z):
     return exp / np.sum(exp, axis=1, keepdims=True)
 
 
+def entropia_cruzada(probabilidades, y_one_hot):
+    """Cross-entropy média das amostras."""
+    probabilidades = np.clip(probabilidades, 1e-12, 1.0)
+    return -np.mean(np.sum(y_one_hot * np.log(probabilidades), axis=1))
+
+
 class RedeNeuralIris:
-    """Rede MLP com parâmetros aleatórios e propagação direta feita com NumPy."""
+    """MLP 4-8-3 com gradiente descendente em lote (batch)."""
 
     def __init__(self, semente=42):
         gerador = np.random.default_rng(semente)
@@ -71,17 +79,68 @@ class RedeNeuralIris:
         return self.a2
 
 
+    def backward(self, x, y_one_hot, taxa_aprendizado):
+        """Calcula gradientes pela regra da cadeia e atualiza parâmetros."""
+        n = x.shape[0]
+        dz2 = (self.a2 - y_one_hot) / n
+        dw2 = self.a1.T @ dz2
+        db2 = np.sum(dz2, axis=0, keepdims=True)
+        dz1 = (dz2 @ self.w2.T) * derivada_relu(self.z1)
+        dw1 = x.T @ dz1
+        db1 = np.sum(dz1, axis=0, keepdims=True)
+
+        self.w1 -= taxa_aprendizado * dw1
+        self.b1 -= taxa_aprendizado * db1
+        self.w2 -= taxa_aprendizado * dw2
+        self.b2 -= taxa_aprendizado * db2
+
+    def treinar(self, x, y_one_hot, epocas=1000, taxa_aprendizado=0.1, intervalo=200):
+        """Treina por batch gradient descent e registra a evolução da perda."""
+        historico = []
+        for epoca in range(1, epocas + 1):
+            self.forward(x)
+            self.backward(x, y_one_hot, taxa_aprendizado)
+            if epoca == 1 or epoca % intervalo == 0 or epoca == epocas:
+                perda = entropia_cruzada(self.forward(x), y_one_hot)
+                historico.append((epoca, perda))
+                print(f"Época {epoca:4d}/{epocas} | perda: {perda:.6f}")
+        return historico
+
+    def prever(self, x):
+        return np.argmax(self.forward(x), axis=1)
+
+
 def main():
-    dados = preparar_dados()
-    rede = RedeNeuralIris()
-    probabilidades = rede.forward(dados["x_teste"])
-    print("AECO - Etapa 2/3: arquitetura e forward pass")
-    print("Arquitetura: 4 entradas -> 8 neurônios ReLU -> 3 saídas Softmax")
+    parser = argparse.ArgumentParser(description="AECO Aula 10 - Classificador Iris com rede neural do zero")
+    parser.add_argument("--epocas", type=int, default=1000, help="Número de épocas (padrão: 1000)")
+    parser.add_argument("--taxa", type=float, default=0.1, help="Taxa de aprendizado (padrão: 0.1)")
+    parser.add_argument("--semente", type=int, default=42, help="Semente aleatória (padrão: 42)")
+    parser.add_argument("--intervalo", type=int, default=200, help="Intervalo para mostrar a perda")
+    args = parser.parse_args()
+    if args.epocas <= 0 or args.taxa <= 0 or args.intervalo <= 0:
+        parser.error("--epocas, --taxa e --intervalo devem ser positivos")
+
+    dados = preparar_dados(args.semente)
+    rede = RedeNeuralIris(args.semente)
+
+    print("AECO - Aula 10 | Rede Neural Artificial - Iris")
+    print("Arquitetura: 4 entradas -> 8 ReLU -> 3 Softmax")
     print(f"Divisão: {len(dados['x_treino'])} treino / {len(dados['x_teste'])} teste")
-    print(f"Pesos: W1={rede.w1.shape}, W2={rede.w2.shape}")
-    print(f"Probabilidades da primeira amostra: {np.round(probabilidades[0], 4)}")
-    print(f"Soma das probabilidades: {probabilidades[0].sum():.6f}")
-    print("Status: rede inicializada; treinamento será implementado na etapa 3.")
+    print(f"Épocas: {args.epocas} | Taxa: {args.taxa} | Semente: {args.semente}")
+    print("\nTreinamento:")
+    rede.treinar(dados["x_treino"], dados["y_treino_one_hot"], args.epocas, args.taxa, args.intervalo)
+
+    previsoes = rede.prever(dados["x_teste"])
+    matriz = np.zeros((3, 3), dtype=int)
+    np.add.at(matriz, (dados["y_teste"], previsoes), 1)
+    corretas = int(np.sum(previsoes == dados["y_teste"]))
+    acuracia = 100.0 * corretas / len(previsoes)
+    print("\nAvaliação no conjunto de teste:")
+    print(f"Acertos: {corretas}/{len(previsoes)}")
+    print(f"Acurácia: {acuracia:.2f}%")
+    print("Matriz de confusão (linhas: classe real; colunas: classe prevista):")
+    print("Classes:", ", ".join(dados["nomes_classes"]))
+    print(matriz)
 
 
 if __name__ == "__main__":
